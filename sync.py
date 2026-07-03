@@ -2,6 +2,12 @@ import os
 import json
 import yt_dlp
 
+try:
+    import static_ffmpeg
+    static_ffmpeg.add_paths()
+except ImportError:
+    pass
+
 # Configuration from Environment
 MUSIC_DIR = os.environ.get("MUSIC_DIR", ".")
 YOUTUBE_PLAYLIST_URL = os.environ.get("YOUTUBE_PLAYLIST_URL")
