@@ -39,16 +39,39 @@ def main():
     if os.path.exists(cookie_file):
         print(f"Using cookies from {cookie_file} for playlist fetching.")
         ydl_opts_flat['cookiefile'] = cookie_file
-    with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl:
-        try:
+    playlist_info = None
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl:
             playlist_info = ydl.extract_info(YOUTUBE_PLAYLIST_URL, download=False)
-            if not playlist_info:
-                print("Failed to retrieve playlist info (returned empty).")
+    except Exception as e_flat:
+        if os.path.exists(cookie_file):
+            print(f"Playlist fetch with cookies failed: {e_flat}. Retrying WITHOUT cookies...")
+            ydl_opts_flat_nocookie = ydl_opts_flat.copy()
+            ydl_opts_flat_nocookie.pop('cookiefile', None)
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts_flat_nocookie) as ydl_nocookie:
+                    playlist_info = ydl_nocookie.extract_info(YOUTUBE_PLAYLIST_URL, download=False)
+            except Exception as e_nocookie:
+                print(f"Playlist fetch without cookies also failed: {e_nocookie}")
                 return
-            entries = playlist_info.get('entries', [])
-        except Exception as e:
-            print(f"Failed to fetch playlist info: {e}")
+        else:
+            print(f"Failed to fetch playlist info: {e_flat}")
             return
+
+    if not playlist_info:
+        # Fallback if returned empty but no exception
+        if os.path.exists(cookie_file):
+            print("Playlist fetch with cookies returned empty. Retrying WITHOUT cookies...")
+            ydl_opts_flat_nocookie = ydl_opts_flat.copy()
+            ydl_opts_flat_nocookie.pop('cookiefile', None)
+            with yt_dlp.YoutubeDL(ydl_opts_flat_nocookie) as ydl_nocookie:
+                playlist_info = ydl_nocookie.extract_info(YOUTUBE_PLAYLIST_URL, download=False)
+        
+        if not playlist_info:
+            print("Failed to retrieve playlist info (returned empty).")
+            return
+
+    entries = playlist_info.get('entries', [])
 
     new_tracks_added = False
 
@@ -73,7 +96,7 @@ def main():
             out_template = os.path.join(songs_dir, f"{video_id}.%(ext)s")
             
             ydl_opts = {
-                'format': 'bestaudio/best/best',
+                'format': 'bestaudio/best',
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': 'mp3',
@@ -86,8 +109,19 @@ def main():
             if os.path.exists(cookie_file):
                 ydl_opts['cookiefile'] = cookie_file
             
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl_download:
-                info = ydl_download.extract_info(url, download=True)
+            info = None
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl_download:
+                    info = ydl_download.extract_info(url, download=True)
+            except Exception as e_download:
+                if os.path.exists(cookie_file):
+                    print(f"Download with cookies failed: {e_download}. Retrying WITHOUT cookies...")
+                    ydl_opts_nocookie = ydl_opts.copy()
+                    ydl_opts_nocookie.pop('cookiefile', None)
+                    with yt_dlp.YoutubeDL(ydl_opts_nocookie) as ydl_download_nocookie:
+                        info = ydl_download_nocookie.extract_info(url, download=True)
+                else:
+                    raise e_download
             
             title = info.get('title', title)
             artist = info.get('uploader') or info.get('artist') or info.get('creator') or 'Unknown Artist'
